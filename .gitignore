@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+.dotnet-cli/
+.nuget/
+.idea/
+.vscode/
+*.user
+*.suo
+TestResults/
+artifacts/
+models/*
+!models/README.md
+!models/manifest.json
+runtime/cache/
+runtime/audio/

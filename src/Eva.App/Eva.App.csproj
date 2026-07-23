@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <ProjectReference Include="../EveEsi.Core/EveEsi.Core.csproj" />
+    <ProjectReference Include="../EveEsi.Cli/EveEsi.Cli.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../runtime/codex-workspace/**" Link="runtime/codex-workspace/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CopyEveEsiCli" AfterTargets="Build">
+    <ItemGroup>
+      <_EveEsiCliFiles Include="../EveEsi.Cli/bin/$(Configuration)/net10.0/**" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_EveEsiCliFiles)" DestinationFiles="@(_EveEsiCliFiles->'$(OutDir)cli/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

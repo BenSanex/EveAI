@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Eva.App/Eva.App.csproj" />
+    <Project Path="src/EveEsi.Cli/EveEsi.Cli.csproj" />
+    <Project Path="src/EveEsi.Core/EveEsi.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Eva.App.Tests/Eva.App.Tests.csproj" />
+    <Project Path="tests/EveEsi.Cli.Tests/EveEsi.Cli.Tests.csproj" />
+    <Project Path="tests/EveEsi.Core.Tests/EveEsi.Core.Tests.csproj" />
+  </Folder>
+</Solution>
