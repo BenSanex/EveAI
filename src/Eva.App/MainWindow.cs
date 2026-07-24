@@ -18,7 +18,11 @@ public sealed class MainWindow : Window
         AcceptsReturn = true,
         TextWrapping = TextWrapping.Wrap
     };
-    private readonly TextBox _input = new() { PlaceholderText = "Ask about EVE…", AcceptsReturn = true };
+    private readonly TextBox _input = new()
+    {
+        PlaceholderText = "ENTER PILOT QUERY…",
+        AcceptsReturn = true
+    };
     private readonly TextBlock _status = new() { Text = "Starting Codex…", VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _referenceStatus = new() { Text = "Reference index: checking", VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBox _diagnostics = new()
@@ -195,16 +199,7 @@ public sealed class MainWindow : Window
 
     private static Control HudPanel(Control content, string label)
     {
-        var chrome = new Avalonia.Controls.Shapes.Path
-        {
-            Data = Geometry.Parse(
-                "M 18,0 L 982,0 L 1000,18 L 1000,982 L 982,1000 L 18,1000 L 0,982 L 0,18 Z"),
-            Stretch = Stretch.Fill,
-            Fill = new SolidColorBrush(Color.FromArgb(128, 2, 21, 35)),
-            Stroke = new SolidColorBrush(Color.FromArgb(195, 31, 183, 222)),
-            StrokeThickness = 1,
-            IsHitTestVisible = false
-        };
+        var chrome = new HudChrome { IsHitTestVisible = false };
         var panel = new Grid
         {
             RowDefinitions = new RowDefinitions("Auto,*"),
@@ -309,6 +304,7 @@ public sealed class MainWindow : Window
             _status.Text = "Ready";
             await RefreshCharactersAsync().ConfigureAwait(true);
             _ = UpdateStaticDataAsync();
+            _input.Focus();
         }
         catch (Exception exception)
         {

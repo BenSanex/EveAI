@@ -52,3 +52,45 @@ public sealed class HudBackdrop : Control
         context.DrawLine(RingPen, new Point(center.X, center.Y - 250), new Point(center.X, center.Y + 250));
     }
 }
+
+public sealed class HudChrome : Control
+{
+    private static readonly IBrush FillBrush =
+        new SolidColorBrush(Color.FromArgb(128, 2, 21, 35));
+    private static readonly Pen BorderPen =
+        new(new SolidColorBrush(Color.FromArgb(195, 31, 183, 222)), 1);
+    private static readonly Pen AccentPen =
+        new(new SolidColorBrush(Color.FromArgb(230, 62, 219, 251)), 2);
+
+    public override void Render(DrawingContext context)
+    {
+        base.Render(context);
+        if (Bounds.Width <= 1 || Bounds.Height <= 1)
+        {
+            return;
+        }
+
+        var cut = Math.Min(18, Math.Min(Bounds.Width, Bounds.Height) / 3);
+        var geometry = new StreamGeometry();
+        using (var figure = geometry.Open())
+        {
+            figure.BeginFigure(new Point(cut, 0), true);
+            figure.LineTo(new Point(Bounds.Width - cut, 0));
+            figure.LineTo(new Point(Bounds.Width, cut));
+            figure.LineTo(new Point(Bounds.Width, Bounds.Height - cut));
+            figure.LineTo(new Point(Bounds.Width - cut, Bounds.Height));
+            figure.LineTo(new Point(cut, Bounds.Height));
+            figure.LineTo(new Point(0, Bounds.Height - cut));
+            figure.LineTo(new Point(0, cut));
+            figure.EndFigure(true);
+        }
+        context.DrawGeometry(FillBrush, BorderPen, geometry);
+
+        var accentLength = Math.Min(90, Math.Max(24, Bounds.Width * 0.12));
+        context.DrawLine(AccentPen, new Point(cut, 0), new Point(cut + accentLength, 0));
+        context.DrawLine(
+            AccentPen,
+            new Point(Bounds.Width - cut - accentLength, Bounds.Height),
+            new Point(Bounds.Width - cut, Bounds.Height));
+    }
+}
