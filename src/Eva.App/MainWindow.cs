@@ -166,6 +166,7 @@ public sealed class MainWindow : Window
                 var result = await _codex.RequestAsync("thread/start", new JsonObject
                 {
                     ["cwd"] = runtime,
+                    ["model"] = _settings.CodexModel,
                     ["approvalPolicy"] = "never",
                     ["sandbox"] = "workspace-write",
                     ["developerInstructions"] = developerInstructions
@@ -254,6 +255,8 @@ public sealed class MainWindow : Window
             var result = await _codex.RequestAsync("turn/start", new JsonObject
             {
                 ["threadId"] = _threadId,
+                ["model"] = _settings.CodexModel,
+                ["effort"] = _settings.CodexReasoningEffort,
                 ["input"] = new JsonArray
                 {
                     new JsonObject { ["type"] = "text", ["text"] = prompt }
@@ -379,11 +382,23 @@ public sealed class SettingsWindow : Window
     {
         Title = "Eva Settings";
         Width = 620;
-        Height = 470;
+        Height = 560;
         var clientId = Field("EVE SSO client ID", settings.EveClientId);
         var callback = Field("Loopback callback URI", settings.CallbackUri);
         var whisper = Field("Whisper small.en model directory", settings.WhisperModelDirectory);
         var piper = Field("Piper female English voice model", settings.PiperModelPath);
+        var model = new ComboBox
+        {
+            ItemsSource = new[] { "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol" },
+            SelectedItem = settings.CodexModel,
+            MinWidth = 220
+        };
+        var reasoning = new ComboBox
+        {
+            ItemsSource = new[] { "low", "medium", "high" },
+            SelectedItem = settings.CodexReasoningEffort,
+            MinWidth = 140
+        };
         var shortcut = new Button { Content = "Install Ctrl+Super+Space shortcut" };
         var shortcutStatus = new TextBlock();
         shortcut.Click += async (_, _) =>
@@ -416,7 +431,10 @@ public sealed class SettingsWindow : Window
                     EveClientId = clientId.Text ?? "",
                     CallbackUri = callback.Text ?? "",
                     WhisperModelDirectory = whisper.Text ?? "",
-                    PiperModelPath = piper.Text ?? ""
+                    PiperModelPath = piper.Text ?? "",
+                    CodexModel = model.SelectedItem?.ToString() ?? EvaSettings.Default.CodexModel,
+                    CodexReasoningEffort = reasoning.SelectedItem?.ToString() ??
+                        EvaSettings.Default.CodexReasoningEffort
                 };
                 var sso = new EveSsoConfiguration(
                     pendingSettings.EveClientId,
@@ -443,7 +461,10 @@ public sealed class SettingsWindow : Window
                 EveClientId = clientId.Text ?? "",
                 CallbackUri = callback.Text ?? "",
                 WhisperModelDirectory = whisper.Text ?? "",
-                PiperModelPath = piper.Text ?? ""
+                PiperModelPath = piper.Text ?? "",
+                CodexModel = model.SelectedItem?.ToString() ?? EvaSettings.Default.CodexModel,
+                CodexReasoningEffort = reasoning.SelectedItem?.ToString() ??
+                    EvaSettings.Default.CodexReasoningEffort
             }).ConfigureAwait(true);
             Close();
         };
@@ -461,6 +482,13 @@ public sealed class SettingsWindow : Window
                 new TextBlock { Text = "Local speech", FontSize = 19, Margin = new Thickness(0, 8, 0, 0) },
                 whisper,
                 piper,
+                new TextBlock { Text = "Codex model and reasoning", FontSize = 19, Margin = new Thickness(0, 8, 0, 0) },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children = { model, reasoning }
+                },
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { shortcut, remove } },
                 shortcutStatus,
                 saveButton

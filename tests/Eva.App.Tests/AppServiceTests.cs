@@ -40,6 +40,38 @@ public sealed class AppServiceTests
     }
 
     [Fact]
+    public async Task Settings_MigratesMissingModelToFastDefault()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"eva-settings-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "settings.json"),
+                """
+                {
+                  "EveClientId":"",
+                  "CallbackUri":"http://127.0.0.1:41793/callback/",
+                  "WhisperModelDirectory":"models/whisper",
+                  "PiperModelPath":"models/piper.onnx",
+                  "CodexThreadId":null,
+                  "PromptRevision":"ship-computer-v2",
+                  "Muted":false
+                }
+                """);
+
+            var loaded = await new EvaSettingsStore(directory).LoadAsync();
+
+            Assert.Equal("gpt-5.6-luna", loaded.CodexModel);
+            Assert.Equal("low", loaded.CodexReasoningEffort);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public void CodexRouter_OnlyPlacesAgentMessageDeltaInTranscript()
     {
         var agent = CodexNotificationRouter.Route(JsonNode.Parse(

@@ -38,6 +38,9 @@ On startup Eva checks CCP's official JSONL static-data release and builds a
 query-focused SQLite reference index in the local Eva data directory. The
 existing index remains usable while a new build downloads and imports.
 
+Eva defaults to the fast, affordable `gpt-5.6-luna` Codex model with low
+reasoning effort. Model and reasoning defaults can be changed in Settings.
+
 ## Run the desktop app
 
 For a development build:
