@@ -1,5 +1,7 @@
 namespace Eva.App.Tests;
 
+using System.Text.Json.Nodes;
+
 public sealed class AppServiceTests
 {
     [Fact]
@@ -35,5 +37,24 @@ public sealed class AppServiceTests
         {
             Directory.Delete(directory, true);
         }
+    }
+
+    [Fact]
+    public void CodexRouter_OnlyPlacesAgentMessageDeltaInTranscript()
+    {
+        var agent = CodexNotificationRouter.Route(JsonNode.Parse(
+            """{"method":"item/agentMessage/delta","params":{"delta":"Market data ready."}}""")!);
+        var command = CodexNotificationRouter.Route(JsonNode.Parse(
+            """{"method":"item/commandExecution/outputDelta","params":{"delta":"{\"ok\":true,\"data\":[1,2,3]}"}}""")!);
+        var itemCompleted = CodexNotificationRouter.Route(JsonNode.Parse(
+            """{"method":"item/completed","params":{}}""")!);
+        var turnCompleted = CodexNotificationRouter.Route(JsonNode.Parse(
+            """{"method":"turn/completed","params":{}}""")!);
+
+        Assert.Equal(CodexNotificationKind.AgentText, agent.Kind);
+        Assert.Equal("Market data ready.", agent.Text);
+        Assert.Equal(CodexNotificationKind.Diagnostic, command.Kind);
+        Assert.Equal(CodexNotificationKind.Diagnostic, itemCompleted.Kind);
+        Assert.Equal(CodexNotificationKind.TurnCompleted, turnCompleted.Kind);
     }
 }

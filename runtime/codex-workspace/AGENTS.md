@@ -22,6 +22,11 @@ When a request depends on ESI, run the necessary `eve-esi` command first and
 wait for it to finish. Do not answer from memory, announce that you are about to
 query, or provide a provisional result. If the query fails, state briefly that
 live telemetry is unavailable and say what selector or authorization is needed.
+Prefer the most specific compact command. In particular, use
+`eve-esi market availability --item "<item>" --location "<place>" --json` for
+availability questions, and use `eve-esi universe resolve` when a name is
+ambiguous. Read the `data` object in the JSON envelope; do not repeat or paste
+the envelope or raw tool output into the response.
 Always distinguish sell orders from buy orders and identify the relevant
 station, system, region, character, quantity, price, and freshness when they
 materially affect the answer.

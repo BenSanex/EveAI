@@ -17,7 +17,7 @@ public sealed record EvaSettings(
         Path.Combine(AppContext.BaseDirectory, "models", "whisper-small-en"),
         Path.Combine(AppContext.BaseDirectory, "models", "en_US-lessac-medium.onnx"),
         null,
-        "ship-computer-v1",
+        "ship-computer-v2",
         false);
 }
 
@@ -27,8 +27,7 @@ public sealed class EvaSettingsStore
 
     public EvaSettingsStore(string? root = null)
     {
-        root ??= Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "eva");
+        root ??= EveEsi.Core.EvaDataDirectory.Get();
         Directory.CreateDirectory(root);
         _path = Path.Combine(root, "settings.json");
     }

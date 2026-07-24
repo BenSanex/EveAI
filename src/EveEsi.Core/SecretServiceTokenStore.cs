@@ -18,8 +18,7 @@ public sealed class SecretServiceTokenStore : ICharacterTokenStore
 
     public SecretServiceTokenStore(string? dataDirectory = null)
     {
-        var root = dataDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "eva");
+        var root = dataDirectory ?? EvaDataDirectory.Get();
         Directory.CreateDirectory(root);
         _indexPath = Path.Combine(root, "characters.json");
     }

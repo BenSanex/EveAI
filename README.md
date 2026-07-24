@@ -24,12 +24,19 @@ dotnet test --no-build
 ```sh
 dotnet run --project src/EveEsi.Cli -- help
 dotnet run --project src/EveEsi.Cli -- universe system --id 30000142 --json
-dotnet run --project src/EveEsi.Cli -- market prices --type 34 --json
+dotnet run --project src/EveEsi.Cli -- universe resolve --query Dodixie --kind system --json
+dotnet run --project src/EveEsi.Cli -- market availability --item "Core Probe I" --location Dodixie --json
 ```
 
 Character commands read refresh tokens from Linux Secret Service. Secrets never
-appear in command arguments or output. Configure the EVE SSO client ID in Eva
-Settings or with `EVA_EVE_CLIENT_ID`.
+appear in command arguments or output. Configure the EVE SSO client ID and
+loopback callback in Eva Settings. Both the app and CLI read the same local
+configuration; `EVA_EVE_CLIENT_ID` is only a fallback for an unconfigured
+installation.
+
+On startup Eva checks CCP's official JSONL static-data release and builds a
+query-focused SQLite reference index in the local Eva data directory. The
+existing index remains usable while a new build downloads and imports.
 
 ## Run the desktop app
 

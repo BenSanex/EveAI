@@ -11,7 +11,7 @@ namespace Eva.App;
 
 public sealed class MainWindow : Window
 {
-    private const string CurrentPromptRevision = "ship-computer-v1";
+    private const string CurrentPromptRevision = "ship-computer-v2";
     private readonly TextBox _transcript = new()
     {
         IsReadOnly = true,
@@ -20,6 +20,14 @@ public sealed class MainWindow : Window
     };
     private readonly TextBox _input = new() { PlaceholderText = "Ask about EVE…", AcceptsReturn = true };
     private readonly TextBlock _status = new() { Text = "Starting Codex…", VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock _referenceStatus = new() { Text = "Reference index: checking", VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBox _diagnostics = new()
+    {
+        IsReadOnly = true,
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        MaxHeight = 160
+    };
     private readonly ComboBox _character = new() { PlaceholderText = "Character", MinWidth = 170 };
     private readonly Button _record = new() { Content = "Record" };
     private readonly Button _mute = new() { Content = "Mute" };
@@ -84,6 +92,7 @@ public sealed class MainWindow : Window
         controls.Children.Add(_stop);
         controls.Children.Add(_mute);
         controls.Children.Add(_status);
+        controls.Children.Add(_referenceStatus);
 
         var send = new Button { Content = "Send", MinWidth = 90 };
         send.Click += async (_, _) => await SubmitAsync().ConfigureAwait(true);
@@ -96,12 +105,22 @@ public sealed class MainWindow : Window
         composer.Children.Add(_input);
         composer.Children.Add(send);
 
-        var grid = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto") };
+        var diagnosticPanel = new Expander
+        {
+            Header = "Diagnostics",
+            IsExpanded = false,
+            Content = _diagnostics,
+            Margin = new Thickness(14, 2)
+        };
+
+        var grid = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto") };
         Grid.SetRow(_transcript, 1);
-        Grid.SetRow(controls, 2);
-        Grid.SetRow(composer, 3);
+        Grid.SetRow(diagnosticPanel, 2);
+        Grid.SetRow(controls, 3);
+        Grid.SetRow(composer, 4);
         grid.Children.Add(header);
         grid.Children.Add(_transcript);
+        grid.Children.Add(diagnosticPanel);
         grid.Children.Add(controls);
         grid.Children.Add(composer);
         return grid;
@@ -112,8 +131,23 @@ public sealed class MainWindow : Window
         try
         {
             _settings = await _settingsStore.LoadAsync().ConfigureAwait(true);
+            var ssoStore = new EveSsoConfigurationStore();
+            var sso = await ssoStore.LoadAsync().ConfigureAwait(true);
+            if (string.IsNullOrWhiteSpace(sso.ClientId) &&
+                !string.IsNullOrWhiteSpace(_settings.EveClientId))
+            {
+                sso = new(_settings.EveClientId, _settings.CallbackUri);
+                await ssoStore.SaveAsync(sso).ConfigureAwait(true);
+            }
+            else
+            {
+                _settings = _settings with
+                {
+                    EveClientId = sso.ClientId,
+                    CallbackUri = sso.CallbackUri
+                };
+            }
             _mute.Content = _settings.Muted ? "Unmute" : "Mute";
-            Environment.SetEnvironmentVariable("EVA_EVE_CLIENT_ID", _settings.EveClientId);
             var runtime = Path.Combine(AppContext.BaseDirectory, "runtime", "codex-workspace");
             var cli = Path.Combine(AppContext.BaseDirectory, "cli");
             _codex = new CodexAppServer(runtime, cli);
@@ -147,6 +181,7 @@ public sealed class MainWindow : Window
             }
             _status.Text = "Ready";
             await RefreshCharactersAsync().ConfigureAwait(true);
+            _ = UpdateStaticDataAsync();
         }
         catch (Exception exception)
         {
@@ -259,16 +294,16 @@ public sealed class MainWindow : Window
     {
         Dispatcher.UIThread.Post(() =>
         {
-            var method = message["method"]?.GetValue<string>() ?? "";
-            if (method.Contains("delta", StringComparison.OrdinalIgnoreCase))
+            var routed = CodexNotificationRouter.Route(message);
+            if (routed.Kind == CodexNotificationKind.AgentText && routed.Text is not null)
             {
-                var delta = message["params"]?["delta"]?.GetValue<string>();
-                if (delta is not null)
-                {
-                    Append(delta);
-                }
+                Append(routed.Text);
             }
-            if (method.Contains("completed", StringComparison.OrdinalIgnoreCase))
+            else if (routed.Kind == CodexNotificationKind.Diagnostic && routed.Text is not null)
+            {
+                AppendDiagnostic(routed.Text);
+            }
+            else if (routed.Kind == CodexNotificationKind.TurnCompleted)
             {
                 _status.Text = "Ready";
                 Append("\n");
@@ -282,10 +317,43 @@ public sealed class MainWindow : Window
         _transcript.CaretIndex = _transcript.Text.Length;
     }
 
+    private void AppendDiagnostic(string text)
+    {
+        const int maximumLength = 20_000;
+        var combined = (_diagnostics.Text ?? "") + text + Environment.NewLine;
+        _diagnostics.Text = combined.Length > maximumLength ? combined[^maximumLength..] : combined;
+        _diagnostics.CaretIndex = _diagnostics.Text.Length;
+    }
+
+    private async Task UpdateStaticDataAsync()
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+            var progress = new Progress<SdeUpdateProgress>(value =>
+            {
+                var percent = value.Total is > 0
+                    ? $" {value.Completed * 100 / value.Total}%"
+                    : "";
+                _referenceStatus.Text = $"Reference index: {value.Stage}{percent}";
+            });
+            var result = await new SdeUpdater(http).EnsureCurrentAsync(progress: progress).ConfigureAwait(true);
+            _referenceStatus.Text = result.Updated
+                ? $"Reference index: build {result.BuildNumber} installed"
+                : $"Reference index: build {result.BuildNumber} current";
+        }
+        catch (Exception exception)
+        {
+            _referenceStatus.Text = "Reference index: update failed";
+            AppendDiagnostic($"SDE update: {SecretRedactor.Redact(exception.Message)}");
+        }
+    }
+
     private async Task ApplySettingsAsync(EvaSettings settings)
     {
         _settings = settings;
-        Environment.SetEnvironmentVariable("EVA_EVE_CLIENT_ID", settings.EveClientId);
+        await new EveSsoConfigurationStore().SaveAsync(
+            new(settings.EveClientId, settings.CallbackUri)).ConfigureAwait(true);
         await _settingsStore.SaveAsync(settings).ConfigureAwait(true);
         await RefreshCharactersAsync().ConfigureAwait(true);
     }
@@ -343,10 +411,22 @@ public sealed class SettingsWindow : Window
         {
             try
             {
+                var pendingSettings = settings with
+                {
+                    EveClientId = clientId.Text ?? "",
+                    CallbackUri = callback.Text ?? "",
+                    WhisperModelDirectory = whisper.Text ?? "",
+                    PiperModelPath = piper.Text ?? ""
+                };
+                var sso = new EveSsoConfiguration(
+                    pendingSettings.EveClientId,
+                    pendingSettings.CallbackUri);
+                EveSsoConfigurationStore.ValidateForAuthorization(sso);
+                await save(pendingSettings).ConfigureAwait(true);
                 var flow = new EveAuthorizationFlow(
                     new HttpClient { Timeout = TimeSpan.FromSeconds(30) },
-                    clientId.Text ?? "",
-                    new Uri(callback.Text ?? ""));
+                    sso.ClientId,
+                    new Uri(sso.CallbackUri));
                 var token = await flow.LinkAsync(BrowserLauncher.OpenAsync).ConfigureAwait(true);
                 await new SecretServiceTokenStore().StoreAsync(token).ConfigureAwait(true);
                 authStatus.Text = $"{token.CharacterName} linked securely.";
