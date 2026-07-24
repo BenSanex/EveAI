@@ -11,6 +11,7 @@ namespace Eva.App;
 
 public sealed class MainWindow : Window
 {
+    private const string CurrentPromptRevision = "ship-computer-v1";
     private readonly TextBox _transcript = new()
     {
         IsReadOnly = true,
@@ -118,18 +119,30 @@ public sealed class MainWindow : Window
             _codex = new CodexAppServer(runtime, cli);
             _codex.Notification += OnCodexNotification;
             await _codex.StartAsync().ConfigureAwait(true);
-            _threadId = _settings.CodexThreadId;
+            _threadId = string.Equals(
+                _settings.PromptRevision,
+                CurrentPromptRevision,
+                StringComparison.Ordinal)
+                ? _settings.CodexThreadId
+                : null;
             if (string.IsNullOrWhiteSpace(_threadId))
             {
+                var developerInstructions = await File.ReadAllTextAsync(
+                    Path.Combine(runtime, "AGENTS.md")).ConfigureAwait(true);
                 var result = await _codex.RequestAsync("thread/start", new JsonObject
                 {
                     ["cwd"] = runtime,
                     ["approvalPolicy"] = "never",
-                    ["sandbox"] = "workspace-write"
+                    ["sandbox"] = "workspace-write",
+                    ["developerInstructions"] = developerInstructions
                 }).ConfigureAwait(true);
                 _threadId = result?["thread"]?["id"]?.GetValue<string>()
                     ?? result?["threadId"]?.GetValue<string>();
-                _settings = _settings with { CodexThreadId = _threadId };
+                _settings = _settings with
+                {
+                    CodexThreadId = _threadId,
+                    PromptRevision = CurrentPromptRevision
+                };
                 await _settingsStore.SaveAsync(_settings).ConfigureAwait(true);
             }
             _status.Text = "Ready";
@@ -209,6 +222,13 @@ public sealed class MainWindow : Window
                 ["input"] = new JsonArray
                 {
                     new JsonObject { ["type"] = "text", ["text"] = prompt }
+                },
+                ["sandboxPolicy"] = new JsonObject
+                {
+                    ["type"] = "workspaceWrite",
+                    ["networkAccess"] = true,
+                    ["writableRoots"] = new JsonArray(
+                        Path.Combine(AppContext.BaseDirectory, "runtime", "codex-workspace"))
                 }
             }, _turnLifetime.Token).ConfigureAwait(true);
             _turnId = result?["turn"]?["id"]?.GetValue<string>() ?? result?["turnId"]?.GetValue<string>();

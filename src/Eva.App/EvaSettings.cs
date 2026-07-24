@@ -8,6 +8,7 @@ public sealed record EvaSettings(
     string WhisperModelDirectory,
     string PiperModelPath,
     string? CodexThreadId,
+    string? PromptRevision,
     bool Muted)
 {
     public static EvaSettings Default { get; } = new(
@@ -16,6 +17,7 @@ public sealed record EvaSettings(
         Path.Combine(AppContext.BaseDirectory, "models", "whisper-small-en"),
         Path.Combine(AppContext.BaseDirectory, "models", "en_US-lessac-medium.onnx"),
         null,
+        "ship-computer-v1",
         false);
 }
 
