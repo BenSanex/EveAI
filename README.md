@@ -4,6 +4,8 @@ Eva is a Linux-first, local-voice EVE Online assistant:
 
 `voice → local transcription → Codex → eve-esi → Codex answer → local speech`
 
+![Eva shipboard intelligence HUD](docs/images/eva-hud.png)
+
 - `Eva.App`: Avalonia desktop client and local audio/Codex process bridges.
 - `EveEsi.Cli`: bounded, read-only EVE ESI command-line client.
 - `EveEsi.Core`: ESI HTTP, OAuth/PKCE, caching, and Secret Service support.
