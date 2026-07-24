@@ -31,5 +31,23 @@ Character commands read refresh tokens from Linux Secret Service. Secrets never
 appear in command arguments or output. Configure the EVE SSO client ID in Eva
 Settings or with `EVA_EVE_CLIENT_ID`.
 
+## Run the desktop app
+
+For a development build:
+
+```sh
+dotnet run --project src/Eva.App
+```
+
+After `dotnet build`, Linuxbrew users can run:
+
+```sh
+./scripts/run-eva.sh
+```
+
+The voice path additionally requires `sherpa-onnx-offline`, Piper, a reviewed
+Whisper `small.en` model, and a Piper voice model. Typed chat and public ESI
+commands do not require those speech dependencies.
+
 See [docs/architecture.md](docs/architecture.md) and
 [docs/security.md](docs/security.md).

@@ -173,12 +173,25 @@ public static class EveCli
         var output = new JsonObject();
         var results = new List<EsiResult>();
         var failures = new JsonArray();
-        var oauth = new EveOAuthClient(http, Environment.GetEnvironmentVariable("EVA_EVE_CLIENT_ID") ?? "");
+        var clientId = Environment.GetEnvironmentVariable("EVA_EVE_CLIENT_ID") ?? "";
+        var oauth = new EveOAuthClient(http, clientId);
+        var jwtValidator = new EveJwtValidator(http);
         foreach (var character in selected)
         {
             try
             {
                 var refreshed = await oauth.RefreshAsync(character.RefreshToken, cancellationToken).ConfigureAwait(false);
+                var identity = await jwtValidator.ValidateAsync(
+                    refreshed.AccessToken,
+                    clientId,
+                    character.Scopes,
+                    DateTimeOffset.UtcNow,
+                    cancellationToken).ConfigureAwait(false);
+                if (identity.CharacterId != character.CharacterId ||
+                    !string.Equals(identity.CharacterName, character.CharacterName, StringComparison.Ordinal))
+                {
+                    throw new InvalidDataException("Refreshed token identity did not match the linked character.");
+                }
                 if (!string.Equals(refreshed.RefreshToken, character.RefreshToken, StringComparison.Ordinal))
                 {
                     await store.StoreAsync(character with { RefreshToken = refreshed.RefreshToken }, cancellationToken)

@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.Json;
 using EveEsi.Core;
 
 namespace EveEsi.Core.Tests;
@@ -90,6 +91,30 @@ public sealed class EsiClientTests
         Assert.Equal(
             "Sensitive authentication details were redacted.",
             SecretRedactor.Redact("server returned refresh_token=super-secret"));
+    }
+
+    [Fact]
+    public void JwtClaims_AcceptsDocumentedIssuerAndBothAudiences()
+    {
+        var header = Base64Url(Encoding.UTF8.GetBytes("{}"));
+        var payload = Base64Url(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+        {
+            iss = "https://login.eveonline.com/",
+            aud = new[] { "EVE Online", "client-id" },
+            exp = DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds(),
+            sub = "CHARACTER:EVE:123",
+            name = "Test Pilot",
+            scp = new[] { "esi-location.read_location.v1" }
+        })));
+
+        var identity = EveJwtClaims.ValidatePayload(
+            $"{header}.{payload}.signature",
+            "client-id",
+            ["esi-location.read_location.v1"],
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal(123, identity.CharacterId);
+        Assert.Equal("Test Pilot", identity.CharacterName);
     }
 
     private static string Base64Url(byte[] value) =>

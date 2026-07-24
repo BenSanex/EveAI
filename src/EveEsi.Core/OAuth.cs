@@ -31,6 +31,7 @@ public static class EveJwtClaims
     private static readonly HashSet<string> Issuers = new(StringComparer.Ordinal)
     {
         "https://login.eveonline.com",
+        "https://login.eveonline.com/",
         "login.eveonline.com"
     };
 
@@ -89,11 +90,18 @@ public static class EveJwtClaims
         return new(characterId, name, scopes);
     }
 
-    private static bool AudienceMatches(JsonElement audience, string expected) =>
-        audience.ValueKind == JsonValueKind.String
-            ? audience.GetString() == expected
-            : audience.ValueKind == JsonValueKind.Array &&
-              audience.EnumerateArray().Any(item => item.GetString() == expected);
+    private static bool AudienceMatches(JsonElement audience, string expected)
+    {
+        if (audience.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+        var values = audience.EnumerateArray()
+            .Select(static item => item.GetString())
+            .Where(static item => item is not null)
+            .ToHashSet(StringComparer.Ordinal);
+        return values.Contains(expected) && values.Contains("EVE Online");
+    }
 
     private static IReadOnlyList<string> ReadScopes(JsonElement root)
     {
