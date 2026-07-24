@@ -32,6 +32,13 @@ public sealed class MainWindow : Window
     private readonly Button _record = new() { Content = "Record" };
     private readonly Button _mute = new() { Content = "Mute" };
     private readonly Button _stop = new() { Content = "Stop" };
+    private readonly TextBlock _clock = new()
+    {
+        FontSize = 11,
+        Foreground = new SolidColorBrush(Color.Parse("#3EA2BD")),
+        VerticalAlignment = VerticalAlignment.Center
+    };
+    private readonly DispatcherTimer _hudClock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly PipeWireRecorder _recorder = new();
     private readonly PiperSpeaker _speaker = new();
     private readonly EvaSettingsStore _settingsStore = new();
@@ -43,11 +50,30 @@ public sealed class MainWindow : Window
 
     public MainWindow()
     {
-        Title = "Eva — EVE Assistant";
-        Width = 980;
-        Height = 720;
-        MinWidth = 720;
-        MinHeight = 520;
+        Title = "EVA // SHIPBOARD INTELLIGENCE";
+        Width = 1120;
+        Height = 780;
+        MinWidth = 780;
+        MinHeight = 580;
+        Background = Brushes.Transparent;
+        TransparencyLevelHint =
+        [
+            WindowTransparencyLevel.AcrylicBlur,
+            WindowTransparencyLevel.Blur,
+            WindowTransparencyLevel.Transparent
+        ];
+        _transcript.Background = Brushes.Transparent;
+        _transcript.BorderThickness = new Thickness(0);
+        _transcript.FontSize = 16;
+        _transcript.Padding = new Thickness(8);
+        _input.MinHeight = 58;
+        _input.FontSize = 15;
+        _input.Padding = new Thickness(14, 10);
+        _diagnostics.Background = Brushes.Transparent;
+        _diagnostics.BorderThickness = new Thickness(0);
+        _diagnostics.Foreground = new SolidColorBrush(Color.Parse("#70BCD0"));
+        _status.Foreground = new SolidColorBrush(Color.Parse("#79E7FF"));
+        _referenceStatus.Foreground = new SolidColorBrush(Color.Parse("#559CB1"));
         Content = BuildLayout();
         Opened += OnOpened;
         Closing += OnClosing;
@@ -56,50 +82,79 @@ public sealed class MainWindow : Window
         _mute.Click += (_, _) =>
         {
             _settings = _settings with { Muted = !_settings.Muted };
-            _mute.Content = _settings.Muted ? "Unmute" : "Mute";
+            _mute.Content = _settings.Muted ? "◇  AUDIO ON" : "◇  AUDIO";
             if (_settings.Muted)
             {
                 _speaker.Stop();
             }
         };
         _stop.Click += async (_, _) => await StopCurrentAsync().ConfigureAwait(true);
+        _hudClock.Tick += (_, _) => _clock.Text = DateTimeOffset.Now.ToString("'LOCAL // 'HH:mm:ss");
+        _clock.Text = DateTimeOffset.Now.ToString("'LOCAL // 'HH:mm:ss");
+        _hudClock.Start();
     }
 
     private Control BuildLayout()
     {
-        var header = new DockPanel { Margin = new Thickness(14, 12), LastChildFill = true };
-        DockPanel.SetDock(_character, Dock.Left);
-        header.Children.Add(_character);
-        var settings = new Button { Content = "Settings", HorizontalAlignment = HorizontalAlignment.Right };
+        _character.HorizontalAlignment = HorizontalAlignment.Center;
+        _character.MinWidth = 230;
+        var settings = new Button { Content = "SYSTEM CONFIG", HorizontalAlignment = HorizontalAlignment.Right };
         settings.Click += (_, _) => new SettingsWindow(_settings, ApplySettingsAsync).ShowDialog(this);
-        DockPanel.SetDock(settings, Dock.Right);
-        header.Children.Add(settings);
-        header.Children.Add(new TextBlock
-        {
-            Text = "  EVA",
-            FontSize = 22,
-            FontWeight = FontWeight.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center
-        });
 
-        var controls = new StackPanel
+        var brand = new StackPanel { Spacing = -2 };
+        brand.Children.Add(new TextBlock
+        {
+            Text = "E V A",
+            FontSize = 29,
+            FontWeight = FontWeight.Bold,
+            Foreground = new SolidColorBrush(Color.Parse("#74E7FF"))
+        });
+        brand.Children.Add(new TextBlock
+        {
+            Text = "SHIPBOARD INTELLIGENCE  //  ONLINE",
+            FontSize = 10,
+            Foreground = new SolidColorBrush(Color.Parse("#348CA8"))
+        });
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+            Margin = new Thickness(20, 13)
+        };
+        Grid.SetColumn(_character, 1);
+        var rightHeader = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Margin = new Thickness(14, 8)
+            Spacing = 14,
+            Children = { _clock, settings }
         };
+        Grid.SetColumn(rightHeader, 2);
+        header.Children.Add(brand);
+        header.Children.Add(_character);
+        header.Children.Add(rightHeader);
+
+        _record.Content = "●  RECORD";
+        _stop.Content = "■  ABORT";
+        _mute.Content = "◇  AUDIO";
+        _record.Margin = new Thickness(0, 0, 7, 0);
+        _stop.Margin = new Thickness(0, 0, 7, 0);
+        var controls = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        controls.Margin = new Thickness(4, 2);
         controls.Children.Add(_record);
         controls.Children.Add(_stop);
         controls.Children.Add(_mute);
-        controls.Children.Add(_status);
-        controls.Children.Add(_referenceStatus);
+        controls.Children.Add(StatusChip("CORE", _status));
+        controls.Children.Add(StatusChip("SDE", _referenceStatus));
 
-        var send = new Button { Content = "Send", MinWidth = 90 };
+        var send = new Button { Content = "TRANSMIT  ›", MinWidth = 125, Margin = new Thickness(10, 0, 0, 0) };
         send.Click += async (_, _) => await SubmitAsync().ConfigureAwait(true);
         var composer = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-            Margin = new Thickness(14, 8, 14, 14)
+            Margin = new Thickness(8, 4)
         };
         Grid.SetColumn(send, 1);
         composer.Children.Add(_input);
@@ -107,22 +162,93 @@ public sealed class MainWindow : Window
 
         var diagnosticPanel = new Expander
         {
-            Header = "Diagnostics",
+            Header = "▸ AUXILIARY TELEMETRY / DIAGNOSTICS",
             IsExpanded = false,
             Content = _diagnostics,
-            Margin = new Thickness(14, 2)
+            Foreground = new SolidColorBrush(Color.Parse("#4BA8C2")),
+            Margin = new Thickness(10, 2)
         };
 
-        var grid = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto") };
-        Grid.SetRow(_transcript, 1);
+        var interfaceGrid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto"),
+            Margin = new Thickness(18)
+        };
+        var transcriptPanel = HudPanel(_transcript, "TACTICAL DIALOGUE  /  COMMS CHANNEL 01");
+        var controlPanel = HudPanel(controls, "FLIGHT INTERFACE");
+        var composerPanel = HudPanel(composer, "COMMAND UPLINK");
+        Grid.SetRow(transcriptPanel, 1);
         Grid.SetRow(diagnosticPanel, 2);
-        Grid.SetRow(controls, 3);
-        Grid.SetRow(composer, 4);
-        grid.Children.Add(header);
-        grid.Children.Add(_transcript);
-        grid.Children.Add(diagnosticPanel);
-        grid.Children.Add(controls);
-        grid.Children.Add(composer);
+        Grid.SetRow(controlPanel, 3);
+        Grid.SetRow(composerPanel, 4);
+        interfaceGrid.Children.Add(HudPanel(header, "PILOT INTERFACE  /  ESI READ-ONLY"));
+        interfaceGrid.Children.Add(transcriptPanel);
+        interfaceGrid.Children.Add(diagnosticPanel);
+        interfaceGrid.Children.Add(controlPanel);
+        interfaceGrid.Children.Add(composerPanel);
+
+        var root = new Grid();
+        root.Children.Add(new HudBackdrop { IsHitTestVisible = false });
+        root.Children.Add(interfaceGrid);
+        return root;
+    }
+
+    private static Control HudPanel(Control content, string label)
+    {
+        var chrome = new Avalonia.Controls.Shapes.Path
+        {
+            Data = Geometry.Parse(
+                "M 18,0 L 982,0 L 1000,18 L 1000,982 L 982,1000 L 18,1000 L 0,982 L 0,18 Z"),
+            Stretch = Stretch.Fill,
+            Fill = new SolidColorBrush(Color.FromArgb(128, 2, 21, 35)),
+            Stroke = new SolidColorBrush(Color.FromArgb(195, 31, 183, 222)),
+            StrokeThickness = 1,
+            IsHitTestVisible = false
+        };
+        var panel = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            Margin = new Thickness(4)
+        };
+        Grid.SetRowSpan(chrome, 2);
+        var title = new TextBlock
+        {
+            Text = label,
+            FontSize = 10,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = new SolidColorBrush(Color.Parse("#399DB9")),
+            Margin = new Thickness(18, 9, 18, 0)
+        };
+        Grid.SetRow(content, 1);
+        content.Margin = new Thickness(
+            content.Margin.Left + 12,
+            content.Margin.Top + 6,
+            content.Margin.Right + 12,
+            content.Margin.Bottom + 10);
+        panel.Children.Add(chrome);
+        panel.Children.Add(title);
+        panel.Children.Add(content);
+        return panel;
+    }
+
+    private static Control StatusChip(string name, TextBlock value)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto"),
+            Margin = new Thickness(14, 5, 0, 5)
+        };
+        var label = new TextBlock
+        {
+            Text = name + " // ",
+            FontSize = 10,
+            Foreground = new SolidColorBrush(Color.Parse("#2E7F97")),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        value.FontSize = 11;
+        Grid.SetColumn(value, 1);
+        grid.Children.Add(label);
+        grid.Children.Add(value);
         return grid;
     }
 
@@ -147,7 +273,7 @@ public sealed class MainWindow : Window
                     CallbackUri = sso.CallbackUri
                 };
             }
-            _mute.Content = _settings.Muted ? "Unmute" : "Mute";
+            _mute.Content = _settings.Muted ? "◇  AUDIO ON" : "◇  AUDIO";
             var runtime = Path.Combine(AppContext.BaseDirectory, "runtime", "codex-workspace");
             var cli = Path.Combine(AppContext.BaseDirectory, "cli");
             _codex = new CodexAppServer(runtime, cli);
@@ -193,6 +319,7 @@ public sealed class MainWindow : Window
 
     private async void OnClosing(object? sender, WindowClosingEventArgs eventArgs)
     {
+        _hudClock.Stop();
         _turnLifetime?.Cancel();
         await _settingsStore.SaveAsync(_settings).ConfigureAwait(true);
         await _recorder.DisposeAsync().ConfigureAwait(true);
@@ -218,12 +345,12 @@ public sealed class MainWindow : Window
             if (!_recorder.IsRecording)
             {
                 await _recorder.StartAsync().ConfigureAwait(true);
-                _record.Content = "Stop & send";
+                _record.Content = "●  CAPTURE / SEND";
                 _status.Text = "Recording…";
                 return;
             }
             var path = await _recorder.StopAsync().ConfigureAwait(true);
-            _record.Content = "Record";
+            _record.Content = "●  RECORD";
             _status.Text = "Transcribing…";
             var transcriber = new SherpaTranscriber();
             _input.Text = await transcriber.TranscribeAndDeleteAsync(path, _settings.WhisperModelDirectory)
@@ -232,7 +359,7 @@ public sealed class MainWindow : Window
         }
         catch (Exception exception)
         {
-            _record.Content = "Record";
+            _record.Content = "●  RECORD";
             _status.Text = "Voice error";
             Append($"System: {exception.Message}\n");
         }
@@ -380,9 +507,10 @@ public sealed class SettingsWindow : Window
 {
     public SettingsWindow(EvaSettings settings, Func<EvaSettings, Task> save)
     {
-        Title = "Eva Settings";
+        Title = "EVA // SYSTEM CONFIGURATION";
         Width = 620;
         Height = 560;
+        Background = new SolidColorBrush(Color.Parse("#061522"));
         var clientId = Field("EVE SSO client ID", settings.EveClientId);
         var callback = Field("Loopback callback URI", settings.CallbackUri);
         var whisper = Field("Whisper small.en model directory", settings.WhisperModelDirectory);
