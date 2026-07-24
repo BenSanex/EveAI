@@ -89,4 +89,13 @@ public sealed class AppServiceTests
         Assert.Equal(CodexNotificationKind.Diagnostic, itemCompleted.Kind);
         Assert.Equal(CodexNotificationKind.TurnCompleted, turnCompleted.Kind);
     }
+
+    [Theory]
+    [InlineData("thread not found")]
+    [InlineData("{\"code\":\"thread_not_found\"}")]
+    public void ThreadRecovery_RecognizesMissingThreadErrors(string message)
+    {
+        Assert.True(MainWindow.IsThreadNotFound(new InvalidOperationException(message)));
+        Assert.False(MainWindow.IsThreadNotFound(new InvalidOperationException("authentication failed")));
+    }
 }

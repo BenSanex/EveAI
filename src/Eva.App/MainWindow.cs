@@ -274,33 +274,7 @@ public sealed class MainWindow : Window
             _codex = new CodexAppServer(runtime, cli);
             _codex.Notification += OnCodexNotification;
             await _codex.StartAsync().ConfigureAwait(true);
-            _threadId = string.Equals(
-                _settings.PromptRevision,
-                CurrentPromptRevision,
-                StringComparison.Ordinal)
-                ? _settings.CodexThreadId
-                : null;
-            if (string.IsNullOrWhiteSpace(_threadId))
-            {
-                var developerInstructions = await File.ReadAllTextAsync(
-                    Path.Combine(runtime, "AGENTS.md")).ConfigureAwait(true);
-                var result = await _codex.RequestAsync("thread/start", new JsonObject
-                {
-                    ["cwd"] = runtime,
-                    ["model"] = _settings.CodexModel,
-                    ["approvalPolicy"] = "never",
-                    ["sandbox"] = "workspace-write",
-                    ["developerInstructions"] = developerInstructions
-                }).ConfigureAwait(true);
-                _threadId = result?["thread"]?["id"]?.GetValue<string>()
-                    ?? result?["threadId"]?.GetValue<string>();
-                _settings = _settings with
-                {
-                    CodexThreadId = _threadId,
-                    PromptRevision = CurrentPromptRevision
-                };
-                await _settingsStore.SaveAsync(_settings).ConfigureAwait(true);
-            }
+            await EnsureThreadAsync(runtime).ConfigureAwait(true);
             _status.Text = "Ready";
             await RefreshCharactersAsync().ConfigureAwait(true);
             _ = UpdateStaticDataAsync();
@@ -375,24 +349,21 @@ public sealed class MainWindow : Window
         _turnLifetime = new CancellationTokenSource();
         try
         {
-            var result = await _codex.RequestAsync("turn/start", new JsonObject
+            await StartTurnAsync(prompt, _turnLifetime.Token).ConfigureAwait(true);
+        }
+        catch (Exception exception) when (IsThreadNotFound(exception))
+        {
+            try
             {
-                ["threadId"] = _threadId,
-                ["model"] = _settings.CodexModel,
-                ["effort"] = _settings.CodexReasoningEffort,
-                ["input"] = new JsonArray
-                {
-                    new JsonObject { ["type"] = "text", ["text"] = prompt }
-                },
-                ["sandboxPolicy"] = new JsonObject
-                {
-                    ["type"] = "workspaceWrite",
-                    ["networkAccess"] = true,
-                    ["writableRoots"] = new JsonArray(
-                        Path.Combine(AppContext.BaseDirectory, "runtime", "codex-workspace"))
-                }
-            }, _turnLifetime.Token).ConfigureAwait(true);
-            _turnId = result?["turn"]?["id"]?.GetValue<string>() ?? result?["turnId"]?.GetValue<string>();
+                AppendDiagnostic("Saved Codex thread was unavailable; created a replacement.");
+                await CreateThreadAsync(RuntimeWorkspace()).ConfigureAwait(true);
+                await StartTurnAsync(prompt, _turnLifetime.Token).ConfigureAwait(true);
+            }
+            catch (Exception retryException)
+            {
+                Append($"\nSystem: {retryException.Message}\n");
+                _status.Text = "Error";
+            }
         }
         catch (OperationCanceledException)
         {
@@ -404,6 +375,100 @@ public sealed class MainWindow : Window
             _status.Text = "Error";
         }
     }
+
+    private async Task EnsureThreadAsync(string runtime)
+    {
+        _threadId = string.Equals(
+            _settings.PromptRevision,
+            CurrentPromptRevision,
+            StringComparison.Ordinal)
+            ? _settings.CodexThreadId
+            : null;
+        if (!string.IsNullOrWhiteSpace(_threadId) && _codex is not null)
+        {
+            try
+            {
+                var developerInstructions = await File.ReadAllTextAsync(
+                    Path.Combine(runtime, "AGENTS.md")).ConfigureAwait(true);
+                var resumed = await _codex.RequestAsync("thread/resume", new JsonObject
+                {
+                    ["threadId"] = _threadId,
+                    ["cwd"] = runtime,
+                    ["model"] = _settings.CodexModel,
+                    ["approvalPolicy"] = "never",
+                    ["sandbox"] = "workspace-write",
+                    ["developerInstructions"] = developerInstructions
+                }).ConfigureAwait(true);
+                _threadId = resumed?["thread"]?["id"]?.GetValue<string>() ?? _threadId;
+                return;
+            }
+            catch (Exception exception) when (IsThreadNotFound(exception))
+            {
+                AppendDiagnostic("Saved Codex thread was not found; starting a new dialogue.");
+                _threadId = null;
+            }
+        }
+        await CreateThreadAsync(runtime).ConfigureAwait(true);
+    }
+
+    private async Task CreateThreadAsync(string runtime)
+    {
+        if (_codex is null)
+        {
+            throw new InvalidOperationException("Codex app-server is unavailable.");
+        }
+        var developerInstructions = await File.ReadAllTextAsync(
+            Path.Combine(runtime, "AGENTS.md")).ConfigureAwait(true);
+        var result = await _codex.RequestAsync("thread/start", new JsonObject
+        {
+            ["cwd"] = runtime,
+            ["model"] = _settings.CodexModel,
+            ["approvalPolicy"] = "never",
+            ["sandbox"] = "workspace-write",
+            ["developerInstructions"] = developerInstructions
+        }).ConfigureAwait(true);
+        _threadId = result?["thread"]?["id"]?.GetValue<string>()
+            ?? result?["threadId"]?.GetValue<string>()
+            ?? throw new InvalidDataException("Codex did not return a thread ID.");
+        _settings = _settings with
+        {
+            CodexThreadId = _threadId,
+            PromptRevision = CurrentPromptRevision
+        };
+        await _settingsStore.SaveAsync(_settings).ConfigureAwait(true);
+    }
+
+    private async Task StartTurnAsync(string prompt, CancellationToken cancellationToken)
+    {
+        if (_codex is null || string.IsNullOrWhiteSpace(_threadId))
+        {
+            throw new InvalidOperationException("Codex thread is unavailable.");
+        }
+        var result = await _codex.RequestAsync("turn/start", new JsonObject
+        {
+            ["threadId"] = _threadId,
+            ["model"] = _settings.CodexModel,
+            ["effort"] = _settings.CodexReasoningEffort,
+            ["input"] = new JsonArray
+            {
+                new JsonObject { ["type"] = "text", ["text"] = prompt }
+            },
+            ["sandboxPolicy"] = new JsonObject
+            {
+                ["type"] = "workspaceWrite",
+                ["networkAccess"] = true,
+                ["writableRoots"] = new JsonArray(RuntimeWorkspace())
+            }
+        }, cancellationToken).ConfigureAwait(true);
+        _turnId = result?["turn"]?["id"]?.GetValue<string>() ?? result?["turnId"]?.GetValue<string>();
+    }
+
+    public static bool IsThreadNotFound(Exception exception) =>
+        exception.Message.Contains("thread not found", StringComparison.OrdinalIgnoreCase) ||
+        exception.Message.Contains("thread_not_found", StringComparison.OrdinalIgnoreCase);
+
+    private static string RuntimeWorkspace() =>
+        Path.Combine(AppContext.BaseDirectory, "runtime", "codex-workspace");
 
     private async Task StopCurrentAsync()
     {
