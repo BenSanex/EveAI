@@ -16,8 +16,8 @@ public sealed record EvaSettings(
     public static EvaSettings Default { get; } = new(
         "",
         "http://127.0.0.1:41793/callback/",
-        Path.Combine(AppContext.BaseDirectory, "models", "whisper-small-en"),
-        Path.Combine(AppContext.BaseDirectory, "models", "en_US-lessac-medium.onnx"),
+        SpeechRuntimePaths.WhisperModelDirectory,
+        SpeechRuntimePaths.PiperModelPath,
         "gpt-5.6-luna",
         "low",
         null,
@@ -54,7 +54,13 @@ public sealed class EvaSettingsStore
                     : loaded.CodexModel,
                 CodexReasoningEffort = string.IsNullOrWhiteSpace(loaded.CodexReasoningEffort)
                     ? EvaSettings.Default.CodexReasoningEffort
-                    : loaded.CodexReasoningEffort
+                    : loaded.CodexReasoningEffort,
+                WhisperModelDirectory = IsLegacySpeechPath(loaded.WhisperModelDirectory)
+                    ? EvaSettings.Default.WhisperModelDirectory
+                    : loaded.WhisperModelDirectory,
+                PiperModelPath = IsLegacySpeechPath(loaded.PiperModelPath)
+                    ? EvaSettings.Default.PiperModelPath
+                    : loaded.PiperModelPath
             };
     }
 
@@ -69,4 +75,9 @@ public sealed class EvaSettingsStore
         }
         File.Move(temporary, _path, true);
     }
+
+    private static bool IsLegacySpeechPath(string? path) =>
+        string.IsNullOrWhiteSpace(path) ||
+        path.Contains("models/whisper-small-en", StringComparison.Ordinal) ||
+        path.Contains("models/en_US-lessac-medium.onnx", StringComparison.Ordinal);
 }

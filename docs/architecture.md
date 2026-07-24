@@ -5,6 +5,12 @@ authenticated `codex app-server` subprocess. Codex receives a dedicated runtime
 workspace copied from `runtime/codex-workspace`; its `PATH` includes the packaged
 `eve-esi` directory.
 
+PipeWire captures mono 16 kHz WAV recordings. A persistent Python worker keeps
+the CTranslate2 Distil-Whisper model resident, prefers CUDA float16, and retries
+with CPU int8 if CUDA fails. A separate persistent Piper worker keeps the voice
+model warm, writes a temporary WAV, and plays it through PipeWire. Recordings
+and synthesized WAV files are deleted after use.
+
 `eve-esi` accepts only a fixed command catalogue and maps each operation to
 reviewed ESI `GET` routes. `EveEsi.Core` rejects non-HTTPS ESI origins and every
 HTTP method other than GET.

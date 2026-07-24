@@ -9,6 +9,8 @@
 - Static-data archives are size-bounded, path-validated, checksummed, imported
   into a staging database, and swapped only after a successful import.
 - Audio uses a private temporary directory and is deleted after transcription.
+- Speech inference is local. Model repositories and revisions are pinned, and
+  setup records SHA-256 checksums for every installed model file.
 - Eva changes the GNOME shortcut only through an explicit Settings action and
   refuses to replace an existing binding.
 - The Codex runtime workspace contains instructions, not secrets.

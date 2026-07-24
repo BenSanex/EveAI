@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Controls;
@@ -44,6 +45,7 @@ public sealed class MainWindow : Window
     };
     private readonly DispatcherTimer _hudClock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly PipeWireRecorder _recorder = new();
+    private readonly FasterWhisperTranscriber _transcriber = new();
     private readonly PiperSpeaker _speaker = new();
     private readonly EvaSettingsStore _settingsStore = new();
     private CodexAppServer? _codex;
@@ -51,6 +53,9 @@ public sealed class MainWindow : Window
     private string? _threadId;
     private string? _turnId;
     private CancellationTokenSource? _turnLifetime;
+    private CancellationTokenSource? _speechLifetime;
+    private readonly StringBuilder _currentResponse = new();
+    private bool _isSpeaking;
 
     public MainWindow()
     {
@@ -89,6 +94,7 @@ public sealed class MainWindow : Window
             _mute.Content = _settings.Muted ? "◇  AUDIO ON" : "◇  AUDIO";
             if (_settings.Muted)
             {
+                _speechLifetime?.Cancel();
                 _speaker.Stop();
             }
         };
@@ -103,7 +109,12 @@ public sealed class MainWindow : Window
         _character.HorizontalAlignment = HorizontalAlignment.Center;
         _character.MinWidth = 230;
         var settings = new Button { Content = "SYSTEM CONFIG", HorizontalAlignment = HorizontalAlignment.Right };
-        settings.Click += (_, _) => new SettingsWindow(_settings, ApplySettingsAsync).ShowDialog(this);
+        settings.Click += (_, _) =>
+            new SettingsWindow(
+                _settings,
+                ApplySettingsAsync,
+                TestVoiceAsync,
+                TestMicrophoneAsync).ShowDialog(this);
 
         var brand = new StackPanel { Spacing = -2 };
         brand.Children.Add(new TextBlock
@@ -291,8 +302,11 @@ public sealed class MainWindow : Window
     {
         _hudClock.Stop();
         _turnLifetime?.Cancel();
+        _speechLifetime?.Cancel();
+        _speaker.Stop();
         await _settingsStore.SaveAsync(_settings).ConfigureAwait(true);
         await _recorder.DisposeAsync().ConfigureAwait(true);
+        await _transcriber.DisposeAsync().ConfigureAwait(true);
         if (_codex is not null)
         {
             await _codex.DisposeAsync().ConfigureAwait(true);
@@ -322,9 +336,10 @@ public sealed class MainWindow : Window
             var path = await _recorder.StopAsync().ConfigureAwait(true);
             _record.Content = "●  RECORD";
             _status.Text = "Transcribing…";
-            var transcriber = new SherpaTranscriber();
-            _input.Text = await transcriber.TranscribeAndDeleteAsync(path, _settings.WhisperModelDirectory)
+            _input.Text = await _transcriber.TranscribeAndDeleteAsync(path, _settings.WhisperModelDirectory)
                 .ConfigureAwait(true);
+            _status.Text = $"Transcribed on {_transcriber.LastProvider} in " +
+                $"{_transcriber.LastElapsedMilliseconds ?? 0} ms";
             await SubmitAsync().ConfigureAwait(true);
         }
         catch (Exception exception)
@@ -343,6 +358,12 @@ public sealed class MainWindow : Window
             return;
         }
         _input.Clear();
+        _speechLifetime?.Cancel();
+        if (_isSpeaking)
+        {
+            _speaker.Stop();
+        }
+        _currentResponse.Clear();
         Append($"\nYou: {prompt}\n\nEva: ");
         _status.Text = "Thinking…";
         _turnLifetime?.Dispose();
@@ -472,6 +493,7 @@ public sealed class MainWindow : Window
 
     private async Task StopCurrentAsync()
     {
+        _speechLifetime?.Cancel();
         _speaker.Stop();
         _turnLifetime?.Cancel();
         if (_codex is not null && _threadId is not null && _turnId is not null)
@@ -488,6 +510,7 @@ public sealed class MainWindow : Window
             var routed = CodexNotificationRouter.Route(message);
             if (routed.Kind == CodexNotificationKind.AgentText && routed.Text is not null)
             {
+                _currentResponse.Append(routed.Text);
                 Append(routed.Text);
             }
             else if (routed.Kind == CodexNotificationKind.Diagnostic && routed.Text is not null)
@@ -498,8 +521,82 @@ public sealed class MainWindow : Window
             {
                 _status.Text = "Ready";
                 Append("\n");
+                if (!_settings.Muted && _currentResponse.Length > 0)
+                {
+                    _ = SpeakResponseAsync(_currentResponse.ToString());
+                }
             }
         });
+    }
+
+    private async Task SpeakResponseAsync(string text)
+    {
+        _speechLifetime?.Cancel();
+        _speechLifetime?.Dispose();
+        _speechLifetime = new CancellationTokenSource();
+        try
+        {
+            _isSpeaking = true;
+            _status.Text = "Speaking…";
+            await _speaker.SpeakAsync(text, _settings.PiperModelPath, _speechLifetime.Token)
+                .ConfigureAwait(true);
+            _status.Text = "Ready";
+        }
+        catch (OperationCanceledException)
+        {
+            _status.Text = "Ready";
+        }
+        catch (Exception exception)
+        {
+            _status.Text = "Voice unavailable";
+            AppendDiagnostic($"TTS: {SecretRedactor.Redact(exception.Message)}");
+        }
+        finally
+        {
+            _isSpeaking = false;
+        }
+    }
+
+    private async Task TestVoiceAsync(EvaSettings settings)
+    {
+        _speechLifetime?.Cancel();
+        _speaker.Stop();
+        await _speaker.SpeakAsync(
+            "Voice interface online. Eva is ready, pilot.",
+            settings.PiperModelPath).ConfigureAwait(true);
+    }
+
+    private async Task<string> TestMicrophoneAsync(EvaSettings settings)
+    {
+        if (_recorder.IsRecording)
+        {
+            throw new InvalidOperationException("The microphone is already recording.");
+        }
+        string? path = null;
+        try
+        {
+            await _recorder.StartAsync().ConfigureAwait(true);
+            _status.Text = "Microphone test: speak now…";
+            await Task.Delay(TimeSpan.FromSeconds(4)).ConfigureAwait(true);
+            path = await _recorder.StopAsync().ConfigureAwait(true);
+            _status.Text = "Transcribing microphone test…";
+            var text = await _transcriber.TranscribeAndDeleteAsync(path, settings.WhisperModelDirectory)
+                .ConfigureAwait(true);
+            path = null;
+            _status.Text = "Ready";
+            return text;
+        }
+        finally
+        {
+            if (_recorder.IsRecording)
+            {
+                path = await _recorder.StopAsync().ConfigureAwait(true);
+            }
+            if (path is not null)
+            {
+                PipeWireRecorder.TryDelete(path);
+            }
+        }
     }
 
     private void Append(string text)
@@ -566,16 +663,20 @@ public sealed class MainWindow : Window
 
 public sealed class SettingsWindow : Window
 {
-    public SettingsWindow(EvaSettings settings, Func<EvaSettings, Task> save)
+    public SettingsWindow(
+        EvaSettings settings,
+        Func<EvaSettings, Task> save,
+        Func<EvaSettings, Task> testVoice,
+        Func<EvaSettings, Task<string>> testMicrophone)
     {
         Title = "EVA // SYSTEM CONFIGURATION";
         Width = 620;
-        Height = 560;
+        Height = 650;
         Background = new SolidColorBrush(Color.Parse("#061522"));
         var clientId = Field("EVE SSO client ID", settings.EveClientId);
         var callback = Field("Loopback callback URI", settings.CallbackUri);
-        var whisper = Field("Whisper small.en model directory", settings.WhisperModelDirectory);
-        var piper = Field("Piper female English voice model", settings.PiperModelPath);
+        var whisper = Field("Faster-Whisper model directory", settings.WhisperModelDirectory);
+        var piper = Field("Piper English voice model", settings.PiperModelPath);
         var model = new ComboBox
         {
             ItemsSource = new[] { "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol" },
@@ -609,6 +710,8 @@ public sealed class SettingsWindow : Window
             shortcutStatus.Text = "Shortcut removed.";
         };
         var saveButton = new Button { Content = "Save", HorizontalAlignment = HorizontalAlignment.Right };
+        var testVoiceButton = new Button { Content = "Test local voice" };
+        var testMicrophoneButton = new Button { Content = "Test microphone (4 seconds)" };
         var linkCharacter = new Button { Content = "Link EVE character" };
         var authStatus = new TextBlock();
         linkCharacter.Click += async (_, _) =>
@@ -657,6 +760,41 @@ public sealed class SettingsWindow : Window
             }).ConfigureAwait(true);
             Close();
         };
+        testVoiceButton.Click += async (_, _) =>
+        {
+            try
+            {
+                await testVoice(settings with
+                {
+                    PiperModelPath = piper.Text ?? "",
+                    WhisperModelDirectory = whisper.Text ?? ""
+                }).ConfigureAwait(true);
+                shortcutStatus.Text = "Voice test complete.";
+            }
+            catch (Exception exception)
+            {
+                shortcutStatus.Text = exception.Message;
+            }
+        };
+        testMicrophoneButton.Click += async (_, _) =>
+        {
+            try
+            {
+                shortcutStatus.Text = "Speak now…";
+                var text = await testMicrophone(settings with
+                {
+                    PiperModelPath = piper.Text ?? "",
+                    WhisperModelDirectory = whisper.Text ?? ""
+                }).ConfigureAwait(true);
+                shortcutStatus.Text = string.IsNullOrWhiteSpace(text)
+                    ? "No speech detected."
+                    : $"Heard: {text}";
+            }
+            catch (Exception exception)
+            {
+                shortcutStatus.Text = exception.Message;
+            }
+        };
         Content = new StackPanel
         {
             Margin = new Thickness(20),
@@ -671,6 +809,12 @@ public sealed class SettingsWindow : Window
                 new TextBlock { Text = "Local speech", FontSize = 19, Margin = new Thickness(0, 8, 0, 0) },
                 whisper,
                 piper,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children = { testVoiceButton, testMicrophoneButton }
+                },
                 new TextBlock { Text = "Codex model and reasoning", FontSize = 19, Margin = new Thickness(0, 8, 0, 0) },
                 new StackPanel
                 {

@@ -72,6 +72,39 @@ public sealed class AppServiceTests
     }
 
     [Fact]
+    public async Task FasterWhisperWorker_ReturnsTextAndDeletesRecording()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"eva-speech-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var recording = Path.Combine(directory, "recording.wav");
+        var model = Path.Combine(directory, "model");
+        var worker = Path.Combine(directory, "worker.sh");
+        Directory.CreateDirectory(model);
+        await File.WriteAllBytesAsync(recording, [1, 2, 3, 4]);
+        await File.WriteAllTextAsync(
+            worker,
+            """
+            while IFS= read -r request; do
+              printf '%s\n' '{"id":1,"ok":true,"text":"Set destination to Arnon.","provider":"cuda","elapsedMs":42}'
+            done
+            """);
+        try
+        {
+            await using var transcriber = new FasterWhisperTranscriber("/bin/sh", worker);
+            var text = await transcriber.TranscribeAndDeleteAsync(recording, model);
+
+            Assert.Equal("Set destination to Arnon.", text);
+            Assert.Equal("cuda", transcriber.LastProvider);
+            Assert.Equal(42, transcriber.LastElapsedMilliseconds);
+            Assert.False(File.Exists(recording));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public void CodexRouter_OnlyPlacesAgentMessageDeltaInTranscript()
     {
         var agent = CodexNotificationRouter.Route(JsonNode.Parse(

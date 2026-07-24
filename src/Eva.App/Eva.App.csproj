@@ -11,6 +11,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="../../runtime/codex-workspace/**" Link="runtime/codex-workspace/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../scripts/speech-worker.py" Link="runtime/speech-worker.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="CopyEveEsiCli" AfterTargets="Build">
     <ItemGroup>

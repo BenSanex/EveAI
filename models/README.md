@@ -1,7 +1,8 @@
 # Local speech models
 
 Models are not committed. `manifest.json` records expected artifacts, licenses,
-and SHA-256 values. Never install an unpinned model.
+revisions, and SHA-256 values. Never install an unpinned model.
 
-Place sherpa-onnx and Piper executables on `PATH`, then populate the manifest
-with reviewed Whisper `small.en` and Piper female-English release artifacts.
+Run `./scripts/setup-speech.sh` to create an isolated Python 3.13 environment
+under Eva's local data directory and download the pinned artifacts. The setup
+script also writes a complete per-file manifest beside the installed models.

@@ -57,9 +57,16 @@ After `dotnet build`, Linuxbrew users can run:
 ./scripts/run-eva.sh
 ```
 
-The voice path additionally requires `sherpa-onnx-offline`, Piper, a reviewed
-Whisper `small.en` model, and a Piper voice model. Typed chat and public ESI
-commands do not require those speech dependencies.
+Install the fully local speech runtime and pinned models with:
+
+```sh
+brew install python@3.13
+./scripts/setup-speech.sh
+```
+
+Eva keeps Faster-Whisper `distil-large-v3` resident on the GPU with automatic
+CPU fallback, and uses a warm Piper voice worker for low-latency speech. Typed
+chat and public ESI commands do not require these speech dependencies.
 
 See [docs/architecture.md](docs/architecture.md) and
 [docs/security.md](docs/security.md).

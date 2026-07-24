@@ -1,5 +1,21 @@
 {
   "schema": 1,
-  "artifacts": [],
-  "note": "Populate URLs, licenses, and SHA-256 values after reviewing upstream releases."
+  "artifacts": [
+    {
+      "id": "Systran/faster-distil-whisper-large-v3",
+      "revision": "c3058b475261292e64a0412df1d2681c06260fab",
+      "file": "model.bin",
+      "bytes": 1512927867,
+      "sha256": "b79368e19b6623813609431a6e5ee309a71506701ebc49fd7820e692dec7c5f5",
+      "license": "MIT"
+    },
+    {
+      "id": "rhasspy/piper-voices/en/en_US/amy/medium",
+      "revision": "0d907f158acc877ddeebcbf827659ee13bea8bcd",
+      "file": "en_US-amy-medium.onnx",
+      "bytes": 63201294,
+      "sha256": "b3a6e47b57b8c7fbe6a0ce2518161a50f59a9cdd8a50835c02cb02bdd6206c18",
+      "license": "See the bundled MODEL_CARD and source dataset terms"
+    }
+  ]
 }
